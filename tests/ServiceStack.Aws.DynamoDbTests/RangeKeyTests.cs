@@ -81,7 +81,7 @@ namespace ServiceStack.Aws.DynamoDbTests
                 Data = "Data",
             });
 
-            var dto = await db.GetItemAsync<RangeTest>("test", createdDate);
+            var dto = await db.GetItemAsync<RangeTest>("test", createdDate, false);
 
             dto.PrintDump();
 

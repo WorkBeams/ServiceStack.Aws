@@ -245,17 +245,35 @@ namespace ServiceStack.Aws.DynamoDb
         public IEnumerable<Into> ExecInto<Into>() => Db.Query<Into>(this.Projection<Into>());
         public List<Into> Exec<Into>(int limit) => Db.Query<Into>(this.Projection<Into>(), limit:limit);
 
-#if NET472 || NETCORE
-        public async Task<List<T>> ExecAsync(CancellationToken token=default) => await Db.QueryAsync(this, token).ToListAsync(token);
-        public async Task<List<T>> ExecAsync(int limit, CancellationToken token=default) => await Db.QueryAsync(this, limit:limit, token: token).ToListAsync(token);
-        public async Task<List<Into>> ExecIntoAsync<Into>(CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), token).ToListAsync(token);
-        public async Task<List<Into>> ExecAsync<Into>(int limit, CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), limit:limit, token).ToListAsync(token);
-#else
-        public async Task<List<T>> ExecAsync(CancellationToken token=default) => await Db.QueryAsync(this, token).ConfigAwait();
-        public async Task<List<T>> ExecAsync(int limit, CancellationToken token=default) => await Db.QueryAsync(this, limit:limit, token: token).ConfigAwait();
-        public async Task<List<Into>> ExecIntoAsync<Into>(CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), token).ConfigAwait();
-        public async Task<List<Into>> ExecAsync<Into>(int limit, CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), limit:limit, token).ConfigAwait();
-#endif
+        public IAsyncEnumerable<T> ExecAsync(CancellationToken token=default)
+            => Db.QueryAsync(this);
+
+        public IAsyncEnumerable<T> ExecAsync(int limit, CancellationToken token=default)
+            => Db.QueryAsync(this, limit:limit);
+
+        public IAsyncEnumerable<Into> ExecIntoAsync<Into>(CancellationToken token=default)
+            => Db.QueryAsync<Into>(this.Projection<Into>());
+
+        public IAsyncEnumerable<Into> ExecAsync<Into>(int limit, CancellationToken token=default)
+            => Db.QueryAsync<Into>(this.Projection<Into>(), limit: limit);
+
+        public async IAsyncEnumerable<TKey> ExecColumnAsync<TKey>(Expression<Func<T, TKey>> fields, CancellationToken token=default)
+        {
+            var q = new PocoDynamoExpression(typeof(T)).Parse(fields);
+            var field = q.ReferencedFields[0];
+            this.ProjectionExpression = field;
+            var dField = Table.GetField(field);
+
+            await foreach (var attrValue in Db.QueryAsync<T>(this, token).ConfigureAwait(false))
+            {
+                yield return (TKey)dField.GetValue(attrValue);
+            }
+        }
+
+        // public async Task<List<T>> ExecAsync(CancellationToken token=default) => await Db.QueryAsync(this, token).ToListAsync(token);
+        // public async Task<List<T>> ExecAsync(int limit, CancellationToken token=default) => await Db.QueryAsync(this, limit:limit, token: token).ToListAsync(token);
+        // public async Task<List<Into>> ExecIntoAsync<Into>(CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), token).ToListAsync(token);
+        // public async Task<List<Into>> ExecAsync<Into>(int limit, CancellationToken token=default) => await Db.QueryAsync<Into>(this.Projection<Into>(), limit:limit, token).ToListAsync(token);
 
         public IEnumerable<TKey> ExecColumn<TKey>(Expression<Func<T, TKey>> fields)
         {
@@ -269,27 +287,17 @@ namespace ServiceStack.Aws.DynamoDb
                 yield return (TKey)value;
             }
         }
-
-        public async Task<List<TKey>> ExecColumnAsync<TKey>(Expression<Func<T, TKey>> fields, CancellationToken token=default)
-        {
-            var q = new PocoDynamoExpression(typeof(T)).Parse(fields);
-            var field = q.ReferencedFields[0];
-            this.ProjectionExpression = field;
-
-#if NET472 || NETCORE
-            return await Db.QueryAsync(this, token)
-                .Select(attrValue => Table.GetField(field).GetValue(attrValue))
-                .Select(value => (TKey) value)
-                .ToListAsync(token);
-#else
-            var to = new List<TKey>();
-            foreach (var attrValue in await Db.QueryAsync(this, token).ConfigAwait())
-            {
-                object value = Table.GetField(field).GetValue(attrValue);
-                to.Add((TKey) value);
-            }
-            return to;
-#endif
-        }
+        //
+        // public async Task<List<TKey>> ExecColumnAsync<TKey>(Expression<Func<T, TKey>> fields, CancellationToken token=default)
+        // {
+        //     var q = new PocoDynamoExpression(typeof(T)).Parse(fields);
+        //     var field = q.ReferencedFields[0];
+        //     this.ProjectionExpression = field;
+        //
+        //     return await Db.QueryAsync(this, token)
+        //         .Select(attrValue => Table.GetField(field).GetValue(attrValue))
+        //         .Select(value => (TKey) value)
+        //         .ToListAsync(token);
+        // }
     }
 }

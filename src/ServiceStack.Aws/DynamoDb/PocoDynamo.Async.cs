@@ -19,18 +19,18 @@ namespace ServiceStack.Aws.DynamoDb
         public Task InitSchemaAsync(CancellationToken token = default) => 
             CreateMissingTablesAsync(DynamoMetadata.GetTables(), token);
 
-        public async IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<object> hashes, bool? consistentRead = null)
+        public async IAsyncEnumerable<T> GetItemsAsync<T>(IAsyncEnumerable<DynamoId> ids, bool? consistentRead = null)
         {
             var table = DynamoMetadata.GetTable<T>();
 
-            foreach (var hashesBatch in ToLazyBatchesOf(hashes, MaxReadBatchSize))
+            await foreach (var hashesBatch in ToBatchesOfAsync(ids, MaxReadBatchSize))
             {
                 var getItems = new KeysAndAttributes
                                {
                                    ConsistentRead = consistentRead ?? ConsistentRead
                                };
 
-                hashesBatch.Each(id => getItems.Keys.Add(Converters.ToAttributeKeyValue(this, table.HashKey, id)));
+                hashesBatch.Each(id => getItems.Keys.Add(Converters.ToAttributeKeyValue(this, table, id)));
 
                 await foreach (var result in ConvertBatchGetItemResponseAsync<T>(table, getItems).ConfigureAwait(false))
                 {
@@ -199,6 +199,25 @@ namespace ServiceStack.Aws.DynamoDb
             }
 
             return await WaitForTablesToBeDeletedAsync(tableNames, null, token).ConfigAwait();
+        }
+
+        public Task<T> GetItemAsync<T>(DynamoId id, bool? consistentRead = null)
+            => GetItemAsync<T>(id.Hash, id.Range, consistentRead);
+
+        public async Task<T> GetItemAsync<T>(object hash, object range, bool? consistentRead = null)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            var request = new GetItemRequest
+                          {
+                              TableName = table.Name,
+                              Key = Converters.ToAttributeKeyValue(this, table, hash, range),
+                              ConsistentRead = consistentRead ?? ConsistentRead
+                          };
+
+            var result = await ConvertGetItemResponseAsync<T>(request, table).ConfigureAwait(false);
+
+            return result;
         }
 
         public async Task<T> GetItemAsync<T>(object hash, CancellationToken token = default)

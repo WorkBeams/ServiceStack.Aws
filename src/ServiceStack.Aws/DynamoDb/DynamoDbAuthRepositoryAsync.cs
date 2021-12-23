@@ -198,10 +198,9 @@ namespace ServiceStack.Aws.DynamoDb
 
         private async Task<UserIdUserAuthDetailsIndex> GetUserAuthByProviderUserIdAsync(string provider, string userId, CancellationToken token=default)
         {
-            var oAuthProvider = (await Db.FromQueryIndex<UserIdUserAuthDetailsIndex>(
-                        q => q.UserId == userId && q.Provider == provider)
-                    .ExecAsync(token))
-                .FirstOrDefault();
+            var oAuthProvider = await Db.FromQueryIndex<UserIdUserAuthDetailsIndex>(q => q.UserId == userId && q.Provider == provider)
+                                        .ExecAsync(token)
+                                        .FirstOrDefaultAsync(cancellationToken: token);
 
             return oAuthProvider;
         }
@@ -214,8 +213,10 @@ namespace ServiceStack.Aws.DynamoDb
             if (LowerCaseUsernames)
                 userNameOrEmail = userNameOrEmail.ToLower();
 
-            var index = (await Db.FromQueryIndex<UsernameUserAuthIndex>(q => q.UserName == userNameOrEmail)
-                .ExecAsync(token)).FirstOrDefault();
+            var index = await Db.FromQueryIndex<UsernameUserAuthIndex>(q => q.UserName == userNameOrEmail)
+                                .ExecAsync(token)
+                                .FirstOrDefaultAsync(cancellationToken: token);
+
             if (index == null)
                 return null;
 
@@ -300,14 +301,18 @@ namespace ServiceStack.Aws.DynamoDb
             await Db.DeleteItemAsync<TUserAuth>(userAuthId, token: token);
 
             var userAuthDetails = await Db.FromQuery<TUserAuthDetails>(x => x.UserAuthId == userId)
-                .Select(x => x.Id)
-                .ExecAsync(token);
+                                          .Select(x => x.Id)
+                                          .ExecAsync(token)
+                                          .ToListAsync(cancellationToken: token);
+
             var userAuthDetailsKeys = userAuthDetails.Map(x => new DynamoId(x.UserAuthId, x.Id));
             await Db.DeleteItemsAsync<TUserAuthDetails>(userAuthDetailsKeys, token);
 
             var userAuthRoles = await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == userId)
-                .Select(x => x.Id)
-                .ExecAsync(token);
+                                        .Select(x => x.Id)
+                                        .ExecAsync(token)
+                                        .ToListAsync(cancellationToken: token);
+
             var userAuthRolesKeys = userAuthRoles.Map(x => new DynamoId(x.UserAuthId, x.Id));
             await Db.DeleteItemsAsync<UserAuthRole>(userAuthRolesKeys, token);
         }
@@ -326,26 +331,32 @@ namespace ServiceStack.Aws.DynamoDb
         public async Task<ICollection<string>> GetRolesAsync(string userAuthId, CancellationToken token = default)
         {
             var authId = int.Parse(userAuthId);
+
             return (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
-                    .Filter(x => x.Role != null)
-                    .ExecAsync(token))
+                            .Filter(x => x.Role != null)
+                            .ExecAsync(token)
+                            .ToListAsync(cancellationToken: token))
                 .Map(x => x.Role);
         }
 
         public async Task<ICollection<string>> GetPermissionsAsync(string userAuthId, CancellationToken token = default)
         {
             var authId = int.Parse(userAuthId);
+
             return (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
-                    .Filter(x => x.Permission != null)
-                    .ExecAsync(token))
+                            .Filter(x => x.Permission != null)
+                            .ExecAsync(token)
+                            .ToListAsync(cancellationToken: token))
                 .Map(x => x.Permission);
         }
 
         public async Task<Tuple<ICollection<string>, ICollection<string>>> GetRolesAndPermissionsAsync(string userAuthId, CancellationToken token = default)
         {
             var authId = int.Parse(userAuthId);
+
             var results = await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
-                .ExecAsync(token);
+                                  .ExecAsync(token)
+                                  .ToListAsync(cancellationToken: token);
 
             ICollection<string> roles = new List<string>();
             ICollection<string> permissions = new List<string>();
@@ -370,10 +381,10 @@ namespace ServiceStack.Aws.DynamoDb
 
             var authId = int.Parse(userAuthId);
 
-            return (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
-                    .Filter(x => x.Role == role)
-                    .ExecAsync(token))
-                .Any();
+            return await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
+                           .Filter(x => x.Role == role)
+                           .ExecAsync(token)
+                           .AnyAsync(cancellationToken: token);
         }
 
         public async Task<bool> HasPermissionAsync(string userAuthId, string permission, CancellationToken token = default)
@@ -386,10 +397,10 @@ namespace ServiceStack.Aws.DynamoDb
 
             var authId = int.Parse(userAuthId);
 
-            return (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
-                    .Filter(x => x.Permission == permission)
-                    .ExecAsync(token))
-                .Any();
+            return await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == authId)
+                           .Filter(x => x.Permission == permission)
+                           .ExecAsync(token)
+                           .AnyAsync(cancellationToken: token);
         }
 
         public async Task AssignRolesAsync(string userAuthId, ICollection<string> roles = null, ICollection<string> permissions = null, CancellationToken token = default)
@@ -397,8 +408,9 @@ namespace ServiceStack.Aws.DynamoDb
             var userAuth = await GetUserAuthAsync(userAuthId, token);
             var now = DateTime.UtcNow;
 
-            var userRoles = (await Db.FromQuery<UserAuthRole>(q => q.UserAuthId == userAuth.Id)
-                .ExecAsync(token)).ToList();
+            var userRoles = await Db.FromQuery<UserAuthRole>(q => q.UserAuthId == userAuth.Id)
+                                    .ExecAsync(token)
+                                    .ToListAsync(cancellationToken: token);
 
             if (!roles.IsEmpty())
             {
@@ -442,9 +454,14 @@ namespace ServiceStack.Aws.DynamoDb
             if (!roles.IsEmpty())
             {
                 var authRoleIds = (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == userAuth.Id)
-                        .Filter(x => roles.Contains(x.Role))
-                        .Select(x => new {x.UserAuthId, x.Id})
-                        .ExecAsync(token))
+                                           .Filter(x => roles.Contains(x.Role))
+                                           .Select(x => new
+                                                        {
+                                                            x.UserAuthId,
+                                                            x.Id
+                                                        })
+                                           .ExecAsync(token)
+                                           .ToListAsync(cancellationToken: token))
                     .Map(x => new DynamoId(x.UserAuthId, x.Id));
 
                 await Db.DeleteItemsAsync<UserAuthRole>(authRoleIds, token);
@@ -453,9 +470,14 @@ namespace ServiceStack.Aws.DynamoDb
             if (!permissions.IsEmpty())
             {
                 var authRoleIds = (await Db.FromQuery<UserAuthRole>(x => x.UserAuthId == userAuth.Id)
-                        .Filter(x => permissions.Contains(x.Permission))
-                        .Select(x => new {x.UserAuthId, x.Id})
-                        .ExecAsync(token))
+                                           .Filter(x => permissions.Contains(x.Permission))
+                                           .Select(x => new
+                                                        {
+                                                            x.UserAuthId,
+                                                            x.Id
+                                                        })
+                                           .ExecAsync(token)
+                                           .ToListAsync(cancellationToken: token))
                     .Map(x => new DynamoId(x.UserAuthId, x.Id));
 
                 await Db.DeleteItemsAsync<UserAuthRole>(authRoleIds, token);
@@ -464,24 +486,24 @@ namespace ServiceStack.Aws.DynamoDb
 
         public async Task<bool> ApiKeyExistsAsync(string apiKey, CancellationToken token = default)
         {
-            return (await Db.FromQueryIndex<ApiKeyIdIndex>(x => x.Id == apiKey).ExecAsync(1, token)).Count > 0;
+            return await Db.FromQueryIndex<ApiKeyIdIndex>(x => x.Id == apiKey).ExecAsync(1, token).CountAsync(cancellationToken: token) > 0;
         }
 
         public async Task<ApiKey> GetApiKeyAsync(string apiKey, CancellationToken token = default)
         {
-            return (await Db.FromQueryIndex<ApiKeyIdIndex>(x => x.Id == apiKey)
-                    .ExecIntoAsync<ApiKey>(token))
-                .FirstOrDefault();
+            return await Db.FromQueryIndex<ApiKeyIdIndex>(x => x.Id == apiKey)
+                           .ExecIntoAsync<ApiKey>(token)
+                           .FirstOrDefaultAsync(cancellationToken: token);
         }
 
         public async Task<List<ApiKey>> GetUserApiKeysAsync(string userId, CancellationToken token = default)
         {
-            return (await Db.FromQuery<ApiKey>(x => x.UserAuthId == userId)
-                    .Filter(x => x.CancelledDate == null
-                                 && (x.ExpiryDate == null || x.ExpiryDate >= DateTime.UtcNow))
-                    .ExecAsync(token))
-                .OrderByDescending(x => x.CreatedDate)
-                .ToList();
+            return await Db.FromQuery<ApiKey>(x => x.UserAuthId == userId)
+                           .Filter(x => x.CancelledDate == null
+                                        && (x.ExpiryDate == null || x.ExpiryDate >= DateTime.UtcNow))
+                           .ExecAsync(token)
+                           .OrderByDescending(x => x.CreatedDate)
+                           .ToListAsync(cancellationToken: token);
         }
 
         public async Task StoreAllAsync(IEnumerable<ApiKey> apiKeys, CancellationToken token = default)

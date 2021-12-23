@@ -180,7 +180,7 @@ namespace ServiceStack.Aws.DynamoDbTests
                 ModifiedDate = DateTime.UtcNow,
             });
 
-            var userAuthRole = await db.GetItemAsync<UserAuthRole>(1, 2);
+            var userAuthRole = await db.GetItemAsync<UserAuthRole>(1, 2, false);
             Assert.That(userAuthRole, Is.Not.Null);
 
             userAuthRole.PrintDump();

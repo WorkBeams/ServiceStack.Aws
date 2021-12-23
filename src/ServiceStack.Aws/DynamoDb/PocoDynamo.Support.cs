@@ -46,6 +46,35 @@ namespace ServiceStack.Aws.DynamoDb
             } while (yielded < take && source.MoveNext());
         }
 
+        private static async IAsyncEnumerable<List<T>> ToBatchesOfAsync<T>(IAsyncEnumerable<T> source, int batchSize)
+        {
+            if (source == null)
+            {
+                yield break;
+            }
+
+            var batch = new List<T>(batchSize);
+
+            await foreach (var item in source)
+            {
+                batch.Add(item);
+
+                if (batch.Count < batchSize)
+                {
+                    continue;
+                }
+
+                yield return batch;
+
+                batch = new List<T>(batchSize);
+            }
+
+            if (batch.Count > 0)
+            {
+                yield return batch;
+            }
+        }
+
         //Error Handling: http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ErrorHandling.html
         public void Exec(Action fn, Type[] rethrowExceptions = null, HashSet<string> retryOnErrorCodes = null)
         {
@@ -458,27 +487,6 @@ namespace ServiceStack.Aws.DynamoDb
                     var pos = seqRequiredPos[i];
                     autoIncr.SetValue(items[pos], nextSequences[i]);
                 }
-            }
-        }
-
-        public static async IAsyncEnumerable<List<T>> ToBatchesOfAsync<T>(IAsyncEnumerable<T> sequence, int batchSize)
-        {
-            var batch = new List<T>(batchSize);
-
-            await foreach (var item in sequence)
-            {
-                batch.Add(item);
-
-                if (batch.Count >= batchSize)
-                {
-                    yield return batch;
-                    batch.Clear();
-                }
-            }
-
-            if (batch.Count > 0)
-            {
-                yield return batch;
             }
         }
 

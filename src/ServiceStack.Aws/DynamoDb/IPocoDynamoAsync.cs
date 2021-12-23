@@ -14,14 +14,16 @@ namespace ServiceStack.Aws.DynamoDb
     /// </summary>
     public interface IPocoDynamoAsync
     {
-        IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<object> hashes, bool? consistentRead = null);
         IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<DynamoId> ids, bool? consistentRead = null);
+        IAsyncEnumerable<T> GetItemsAsync<T>(IAsyncEnumerable<DynamoId> ids, bool? consistentRead = null);
 
         Task PutItemsAsync<T>(IAsyncEnumerable<T> items);
 
         Task DeleteItemsAsync<T>(IAsyncEnumerable<object> hashes);
         Task DeleteItemsAsync<T>(IAsyncEnumerable<DynamoId> ids);
 
+        Task<T> GetItemAsync<T>(DynamoId id, bool? consistentRead = null);
+        Task<T> GetItemAsync<T>(object hash, object range, bool? consistentRead = null);
 
         Task InitSchemaAsync(CancellationToken token = default);
         Task<List<string>> GetTableNamesAsync(CancellationToken token = default);

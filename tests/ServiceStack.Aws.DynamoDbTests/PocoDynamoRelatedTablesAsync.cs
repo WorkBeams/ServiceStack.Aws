@@ -163,7 +163,11 @@ namespace ServiceStack.Aws.DynamoDbTests
             //Note: Local DynamoDb supports projecting attributes not in GlobalIndex, AWS DynamoDB Doesn't
             var dbOrders = (await db.QueryIntoAsync<OrderWithGlobalTypedIndex>(db.FromQueryIndex<OrderGlobalCostIndex>(x => x.ProductId == 1 && x.Cost > 10))).ToList();
             Assert.That(dbOrders.All(x => x.Cost > 10 && x.Id > 0 && x.Qty > 0 && x.LineItem != null));
-            dbOrders = (await db.FromQueryIndex<OrderGlobalCostIndex>(x => x.ProductId == 1 && x.Cost > 10).ExecIntoAsync<OrderWithGlobalTypedIndex>()).ToList();
+
+            dbOrders = await db.FromQueryIndex<OrderGlobalCostIndex>(x => x.ProductId == 1 && x.Cost > 10)
+                               .ExecIntoAsync<OrderWithGlobalTypedIndex>()
+                               .ToListAsync();
+
             Assert.That(dbOrders.All(x => x.Cost > 10 && x.Id > 0 && x.Qty > 0 && x.LineItem != null));
 
             expensiveOrders = await db.ScanAsync(db.FromScanIndex<OrderGlobalCostIndex>(x => x.Cost > 10)).ToListAsync();
