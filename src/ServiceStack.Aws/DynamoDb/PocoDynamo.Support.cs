@@ -18,6 +18,34 @@ namespace ServiceStack.Aws.DynamoDb
     {
         public Action<Exception> ExceptionFilter { get; set; }
 
+        private static IEnumerable<IEnumerable<T>> ToLazyBatchesOf<T>(IEnumerable<T> source, int batchSize)
+        {
+            if (source == null)
+            {
+                yield break;
+            }
+
+            using(var sourceEnumerator = source.GetEnumerator())
+            {
+                while (sourceEnumerator.MoveNext())
+                {
+                    yield return TakeFromEnumeratorInternal(sourceEnumerator, batchSize);
+                }
+            }
+        }
+
+        private static IEnumerable<T> TakeFromEnumeratorInternal<T>(IEnumerator<T> source, int take)
+        {
+            var yielded = 0;
+
+            do
+            {
+                yield return source.Current;
+
+                yielded++;
+            } while (yielded < take && source.MoveNext());
+        }
+
         //Error Handling: http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ErrorHandling.html
         public void Exec(Action fn, Type[] rethrowExceptions = null, HashSet<string> retryOnErrorCodes = null)
         {
@@ -100,7 +128,7 @@ namespace ServiceStack.Aws.DynamoDb
                 i++;
                 try
                 {
-                    return await fn();
+                    return await fn().ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -123,7 +151,7 @@ namespace ServiceStack.Aws.DynamoDb
                         !retryOnErrorCodes.Contains(amazonEx.ErrorCode))
                         throw;
 
-                    await i.SleepBackOffMultiplierAsync();
+                    await i.SleepBackOffMultiplierAsync().ConfigureAwait(false);
                 }
             }
 
@@ -432,6 +460,67 @@ namespace ServiceStack.Aws.DynamoDb
                 }
             }
         }
-        
+
+        public static async IAsyncEnumerable<List<T>> ToBatchesOfAsync<T>(IAsyncEnumerable<T> sequence, int batchSize)
+        {
+            var batch = new List<T>(batchSize);
+
+            await foreach (var item in sequence)
+            {
+                batch.Add(item);
+
+                if (batch.Count >= batchSize)
+                {
+                    yield return batch;
+                    batch.Clear();
+                }
+            }
+
+            if (batch.Count > 0)
+            {
+                yield return batch;
+            }
+        }
+
+        private async IAsyncEnumerable<IEnumerable<T>> ConvertBatchGetItemResponseAsync<T>(DynamoMetadataType table, KeysAndAttributes getItems)
+        {
+            var request = new BatchGetItemRequest(new Dictionary<string, KeysAndAttributes>
+                                                  {
+                                                      { table.Name, getItems }
+                                                  });
+
+            var response = await ExecAsync(() => DynamoDb.BatchGetItemAsync(request)).ConfigureAwait(false);
+
+            if (response.Responses.TryGetValue(table.Name, out var results))
+            {
+                yield return results.Select(r => Converters.FromAttributeValues<T>(table, r));
+            }
+
+            if (response.UnprocessedKeys.IsNullOrEmpty())
+            {
+                yield break;
+            }
+
+            var i = 0;
+
+            while (response.UnprocessedKeys.Count > 0)
+            {
+                response = await ExecAsync(() => DynamoDb.BatchGetItemAsync(new BatchGetItemRequest(response.UnprocessedKeys))).ConfigureAwait(false);
+
+                if (response.Responses.TryGetValue(table.Name, out results))
+                {
+                    yield return results.Select(r => Converters.FromAttributeValues<T>(table, r));
+                }
+
+                if (response.UnprocessedKeys.Count > 0)
+                {
+                    i++;
+
+                    await i.SleepBackOffMultiplierAsync().ConfigureAwait(false);
+                }
+            }
+        }
+
+
     }
 }

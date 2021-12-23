@@ -14,6 +14,15 @@ namespace ServiceStack.Aws.DynamoDb
     /// </summary>
     public interface IPocoDynamoAsync
     {
+        IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<object> hashes, bool? consistentRead = null);
+        IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<DynamoId> ids, bool? consistentRead = null);
+
+        Task PutItemsAsync<T>(IAsyncEnumerable<T> items);
+
+        Task DeleteItemsAsync<T>(IAsyncEnumerable<object> hashes);
+        Task DeleteItemsAsync<T>(IAsyncEnumerable<DynamoId> ids);
+
+
         Task InitSchemaAsync(CancellationToken token = default);
         Task<List<string>> GetTableNamesAsync(CancellationToken token = default);
         Task<bool> CreateMissingTablesAsync(IEnumerable<DynamoMetadataType> tables, 
@@ -53,7 +62,6 @@ namespace ServiceStack.Aws.DynamoDb
         Task<long> ScanItemCountAsync<T>(CancellationToken token = default);
         Task<long> DescribeItemCountAsync<T>(CancellationToken token = default);
 
-#if NET472 || NETCORE
         IAsyncEnumerable<T> ScanAllAsync<T>(CancellationToken token = default);
         IAsyncEnumerable<T> ScanAsync<T>(ScanRequest request, Func<ScanResponse, IEnumerable<T>> converter,
             CancellationToken token = default);
@@ -67,20 +75,5 @@ namespace ServiceStack.Aws.DynamoDb
         IAsyncEnumerable<T> QueryAsync<T>(QueryRequest request, int limit, CancellationToken token = default);
         IAsyncEnumerable<T> QueryAsync<T>(QueryRequest request, Func<QueryResponse, IEnumerable<T>> converter,
             CancellationToken token = default);
-#else
-        Task<List<T>> ScanAllAsync<T>(CancellationToken token = default);
-        Task<List<T>> ScanAsync<T>(ScanRequest request, Func<ScanResponse, IEnumerable<T>> converter,
-            CancellationToken token = default);
-        Task<List<T>> ScanAsync<T>(ScanExpression<T> request, int limit, CancellationToken token = default);
-        Task<List<T>> ScanAsync<T>(ScanExpression<T> request, CancellationToken token = default);
-        Task<List<T>> ScanAsync<T>(ScanRequest request, int limit, CancellationToken token = default);
-        Task<List<T>> ScanAsync<T>(ScanRequest request, CancellationToken token = default);
-        Task<List<T>> QueryAsync<T>(QueryExpression<T> request, CancellationToken token = default);
-        Task<List<T>> QueryAsync<T>(QueryExpression<T> request, int limit, CancellationToken token = default);
-        Task<List<T>> QueryAsync<T>(QueryRequest request, CancellationToken token = default);
-        Task<List<T>> QueryAsync<T>(QueryRequest request, int limit, CancellationToken token = default);
-        Task<List<T>> QueryAsync<T>(QueryRequest request, Func<QueryResponse, IEnumerable<T>> converter,
-            CancellationToken token = default);
-#endif
     }
 }

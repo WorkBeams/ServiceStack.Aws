@@ -18,7 +18,89 @@ namespace ServiceStack.Aws.DynamoDb
     {
         public Task InitSchemaAsync(CancellationToken token = default) => 
             CreateMissingTablesAsync(DynamoMetadata.GetTables(), token);
-        
+
+        public async IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<object> hashes, bool? consistentRead = null)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            foreach (var hashesBatch in ToLazyBatchesOf(hashes, MaxReadBatchSize))
+            {
+                var getItems = new KeysAndAttributes
+                               {
+                                   ConsistentRead = consistentRead ?? ConsistentRead
+                               };
+
+                hashesBatch.Each(id => getItems.Keys.Add(Converters.ToAttributeKeyValue(this, table.HashKey, id)));
+
+                await foreach (var result in ConvertBatchGetItemResponseAsync<T>(table, getItems).ConfigureAwait(false))
+                {
+                    foreach (var item in result)
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+
+        public async IAsyncEnumerable<T> GetItemsAsync<T>(IEnumerable<DynamoId> ids, bool? consistentRead = null)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            foreach (var hashesBatch in ToLazyBatchesOf(ids, MaxReadBatchSize))
+            {
+                var getItems = new KeysAndAttributes
+                               {
+                                   ConsistentRead = consistentRead ?? ConsistentRead
+                               };
+
+                hashesBatch.Each(id => getItems.Keys.Add(Converters.ToAttributeKeyValue(this, table, id)));
+
+                await foreach (var result in ConvertBatchGetItemResponseAsync<T>(table, getItems).ConfigureAwait(false))
+                {
+                    foreach (var item in result)
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+
+        public async Task PutItemsAsync<T>(IAsyncEnumerable<T> items)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            await foreach (var itemsBatch in ToBatchesOfAsync(items, MaxWriteBatchSize))
+            {
+                var putItems = itemsBatch.Map(x => new WriteRequest(new PutRequest(Converters.ToAttributeValues(this, x, table))));
+
+                await ExecBatchWriteItemResponseAsync<T>(table, putItems).ConfigureAwait(false);
+            }
+        }
+
+        public async Task DeleteItemsAsync<T>(IAsyncEnumerable<object> hashes)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            await foreach (var hashBatch in ToBatchesOfAsync(hashes, MaxWriteBatchSize))
+            {
+                var deleteItems = hashBatch.Map(id => new WriteRequest(new DeleteRequest(Converters.ToAttributeKeyValue(this, table.HashKey, id))));
+
+                await ExecBatchWriteItemResponseAsync<T>(table, deleteItems).ConfigureAwait(false);
+            }
+        }
+
+        public async Task DeleteItemsAsync<T>(IAsyncEnumerable<DynamoId> ids)
+        {
+            var table = DynamoMetadata.GetTable<T>();
+
+            await foreach (var idBatch in ToBatchesOfAsync(ids, MaxWriteBatchSize))
+            {
+                var deleteItems = idBatch.Map(id => new WriteRequest(new DeleteRequest(Converters.ToAttributeKeyValue(this, table, id))));
+
+                await ExecBatchWriteItemResponseAsync<T>(table, deleteItems).ConfigureAwait(false);
+            }
+        }
+
         public async Task<List<string>> GetTableNamesAsync(CancellationToken token = default)
         {
             ListTablesResponse response = null;
